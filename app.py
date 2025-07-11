@@ -22,7 +22,7 @@ else:
 def load_data():
     try:
         if not os.path.exists('kepler_data.xlsx'):
-            st.error("Error: kepler_data.xlsx file not found in the app directory.")
+            st.error("Error: kepler_data.xlsx file not found in the app directory. Please ensure it's uploaded to the GitHub repository.")
             return {}
         
         xls = pd.ExcelFile('kepler_data.xlsx')
@@ -30,25 +30,47 @@ def load_data():
         data = {}
         for sheet in sheets:
             try:
-                df = pd.read_excel(xls, sheet_name=sheet)
-                # Check if required columns exist
-                if 'Questions' not in df.columns or 'Answers' not in df.columns:
-                    st.error(f"Error in sheet '{sheet}': Missing 'Questions' or 'Answers' column.")
+                # Read first few rows to inspect headers
+                df = pd.read_excel(xls, sheet_name=sheet, nrows=5)
+                # Display actual column names for debugging
+                actual_columns = df.columns.tolist()
+                st.write(f"Debug: Columns in sheet '{sheet}': {actual_columns}")
+                
+                # Check for required columns (case-insensitive)
+                columns_lower = [col.lower() for col in actual_columns]
+                questions_col = next((col for col in actual_columns if col.lower() == 'questions'), None)
+                answers_col = next((col for col in actual_columns if col.lower() == 'answers'), None)
+                
+                if not questions_col or not answers_col:
+                    st.error(f"Error in sheet '{sheet}': Expected columns 'Questions' and 'Answers' (case-insensitive). Found: {actual_columns}")
                     continue
-                # Clean data: remove empty rows and ensure valid strings
+                
+                # Read full sheet with correct header
+                df = pd.read_excel(xls, sheet_name=sheet)
+                # Rename columns to standard 'Questions' and 'Answers' if needed
+                df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
+                if questions_col != 'Questions':
+                    df = df.rename(columns={questions_col: 'Questions'})
+                if answers_col != 'Answers':
+                    df = df.rename(columns={answers_col: 'Answers'})
+                
+                # Clean data
                 df = df.dropna(subset=['Questions', 'Answers'])
                 df['Questions'] = df['Questions'].astype(str).str.strip().replace('', None)
                 df['Answers'] = df['Answers'].astype(str).str.strip().replace('', None)
                 df = df.dropna(subset=['Questions', 'Answers'])
+                
                 if df.empty:
                     st.warning(f"Warning: No valid data in sheet '{sheet}' after cleaning.")
                     continue
+                
                 data[sheet] = df[['Questions', 'Answers']].to_dict('records')
             except Exception as e:
                 st.error(f"Error processing sheet '{sheet}': {e}")
                 continue
+        
         if not data:
-            st.error("Error: No valid data loaded from any sheet.")
+            st.error("Error: No valid data loaded from any sheet. Please check kepler_data.xlsx.")
         return data
     except Exception as e:
         st.error(f"Error loading kepler_data.xlsx: {e}")
