@@ -1,12 +1,21 @@
 import streamlit as st
 import pandas as pd
 from fuzzywuzzy import fuzz
-from transformers import pipeline
+import google.generativeai as genai
+import os
 import re
 
 # Initialize session state for conversation history
 if 'history' not in st.session_state:
     st.session_state.history = []
+
+# Configure Gemini API (requires API key)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    st.error("Gemini API key not found. Please set GEMINI_API_KEY in Streamlit secrets.")
+    st.stop()
 
 # Load the Excel file with three sheets
 @st.cache_data
@@ -17,7 +26,6 @@ def load_data():
         data = {}
         for sheet in sheets:
             df = pd.read_excel(xls, sheet_name=sheet)
-            # Clean data: remove empty rows and ensure columns
             df = df.dropna(subset=['Questions', 'Answers'])
             df['Questions'] = df['Questions'].str.strip().replace('', None)
             df['Answers'] = df['Answers'].str.strip().replace('', None)
@@ -27,16 +35,16 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return {}
 
-# Initialize Hugging Face question-answering model
+# Initialize Gemini model
 @st.cache_resource
 def load_model():
     try:
-        return pipeline('question-answering', model='distilbert-base-uncased-distilled-squad')
+        return genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
-        st.error(f"Error loading model: {e}")
+        st.error(f"Error loading Gemini model: {e}")
         return None
 
-# Function to find the best matching question
+# Find the best matching question
 def find_best_match(question, data, threshold=80):
     best_match = None
     highest_score = 0
@@ -59,14 +67,24 @@ def clean_input(text):
     text = re.sub(r'\s+', ' ', text)
     return text
 
+# Generate response using Gemini
+def generate_gemini_response(model, question):
+    try:
+        context = "Kepler College is a higher learning institution in Rwanda offering programs in Project Management, Business Analytics, and degrees through a partnership with Southern New Hampshire University (SNHU)."
+        prompt = f"Question: {question}\nContext: {context}\nAnswer based on the context or general knowledge about Kepler College, but keep it concise and relevant."
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error generating response: {e}"
+
 # Main Streamlit app
 def main():
     st.title("Kepler College Chatbot")
-    st.write("Ask me anything about Kepler College, and I'll provide answers based on our dataset or generate a response if needed!")
+    st.write("Ask me anything about Kepler College! I’ll answer based on our dataset or use Gemini AI for additional insights.")
 
     # Load data and model
     data = load_data()
-    qa_model = load_model()
+    gemini_model = load_model()
 
     # Input form
     with st.form(key='question_form', clear_on_submit=True):
@@ -79,27 +97,20 @@ def main():
             st.warning("Please enter a valid question.")
             return
 
-        # Add user question to history
         st.session_state.history.append({"role": "user", "message": user_question})
 
-        # Find best match in dataset
         best_match, score = find_best_match(user_question, data)
 
         if best_match and score >= 80:
             answer, sheet = best_match
             response = f"{answer} (Source: {sheet} sheet)"
         else:
-            # Fallback to Hugging Face model
-            if qa_model:
-                context = "Kepler College is a higher learning institution in Rwanda offering programs in Project Management, Business Analytics, and degrees through a partnership with Southern New Hampshire University (SNHU)."
-                result = qa_model(question=user_question, context=context)
-                response = result['answer']
-                if result['score'] < 0.5:
-                    response = f"Sorry, I couldn't find a close match in the dataset. Based on general knowledge: {response}"
+            if gemini_model:
+                response = generate_gemini_response(gemini_model, user_question)
+                response = f"Sorry, I couldn't find a close match in the dataset. Based on Gemini AI: {response}"
             else:
-                response = "Sorry, I couldn't find an answer in the dataset, and the AI model is unavailable."
+                response = "Sorry, I couldn't find an answer in the dataset, and the Gemini model is unavailable."
 
-        # Add bot response to history
         st.session_state.history.append({"role": "bot", "message": response})
 
     # Display conversation history
