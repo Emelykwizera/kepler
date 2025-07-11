@@ -32,23 +32,25 @@ def load_data():
             try:
                 # Read first few rows to inspect headers
                 df = pd.read_excel(xls, sheet_name=sheet, nrows=5)
-                # Display actual column names for debugging
+                # Strip whitespace from column names
+                df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
                 actual_columns = df.columns.tolist()
-                st.write(f"Debug: Columns in sheet '{sheet}': {actual_columns}")
+                st.write(f"Debug: Columns in sheet '{sheet}' after stripping whitespace: {actual_columns}")
                 
-                # Check for required columns (case-insensitive)
+                # Check for required columns (case-insensitive, after stripping)
                 columns_lower = [col.lower() for col in actual_columns]
-                questions_col = next((col for col in actual_columns if col.lower() == 'questions'), None)
-                answers_col = next((col for col in actual_columns if col.lower() == 'answers'), None)
+                questions_col = next((col for col in actual_columns if col.lower().strip() == 'questions'), None)
+                answers_col = next((col for col in actual_columns if col.lower().strip() == 'answers'), None)
                 
                 if not questions_col or not answers_col:
-                    st.error(f"Error in sheet '{sheet}': Expected columns 'Questions' and 'Answers' (case-insensitive). Found: {actual_columns}")
+                    st.error(f"Error in sheet '{sheet}': Expected columns 'Questions' and 'Answers' (case-insensitive, no whitespace). Found: {actual_columns}")
                     continue
                 
                 # Read full sheet with correct header
                 df = pd.read_excel(xls, sheet_name=sheet)
-                # Rename columns to standard 'Questions' and 'Answers' if needed
+                # Strip whitespace from column names again
                 df.columns = [col.strip() if isinstance(col, str) else col for col in df.columns]
+                # Rename columns to standard 'Questions' and 'Answers' if needed
                 if questions_col != 'Questions':
                     df = df.rename(columns={questions_col: 'Questions'})
                 if answers_col != 'Answers':
@@ -133,34 +135,4 @@ def main():
         submit_button = st.form_submit_button("Ask")
 
     if submit_button and user_question:
-        user_question = clean_input(user_question)
-        if not user_question:
-            st.warning("Please enter a valid question.")
-            return
-
-        st.session_state.history.append({"role": "user", "message": user_question})
-
-        best_match, score = find_best_match(user_question, data)
-
-        if best_match and score >= 80:
-            answer, sheet = best_match
-            response = f"{answer} (Source: {sheet} sheet)"
-        else:
-            if gemini_model:
-                response = generate_gemini_response(gemini_model, user_question)
-                response = f"Sorry, I couldn't find a close match in the dataset. Based on Gemini AI: {response}"
-            else:
-                response = "Sorry, I couldn't find an answer in the dataset, and the Gemini model is unavailable."
-
-        st.session_state.history.append({"role": "bot", "message": response})
-
-    # Display conversation history
-    st.subheader("Conversation History")
-    for entry in st.session_state.history:
-        if entry['role'] == 'user':
-            st.markdown(f"**You**: {entry['message']}")
-        else:
-            st.markdown(f"**KeplerBot**: {entry['message']}")
-
-if __name__ == "__main__":
-    main()
+        user_question = clean
