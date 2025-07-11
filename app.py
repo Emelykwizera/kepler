@@ -21,18 +21,37 @@ else:
 @st.cache_data
 def load_data():
     try:
+        if not os.path.exists('kepler_data.xlsx'):
+            st.error("Error: kepler_data.xlsx file not found in the app directory.")
+            return {}
+        
         xls = pd.ExcelFile('kepler_data.xlsx')
         sheets = ['Draft', 'Admissions', 'Orientation', 'Programs']
         data = {}
         for sheet in sheets:
-            df = pd.read_excel(xls, sheet_name=sheet)
-            df = df.dropna(subset=['Questions', 'Answers'])
-            df['Questions'] = df['Questions'].str.strip().replace('', None)
-            df['Answers'] = df['Answers'].str.strip().replace('', None)
-            data[sheet] = df[['Questions', 'Answers']].to_dict('records')
+            try:
+                df = pd.read_excel(xls, sheet_name=sheet)
+                # Check if required columns exist
+                if 'Questions' not in df.columns or 'Answers' not in df.columns:
+                    st.error(f"Error in sheet '{sheet}': Missing 'Questions' or 'Answers' column.")
+                    continue
+                # Clean data: remove empty rows and ensure valid strings
+                df = df.dropna(subset=['Questions', 'Answers'])
+                df['Questions'] = df['Questions'].astype(str).str.strip().replace('', None)
+                df['Answers'] = df['Answers'].astype(str).str.strip().replace('', None)
+                df = df.dropna(subset=['Questions', 'Answers'])
+                if df.empty:
+                    st.warning(f"Warning: No valid data in sheet '{sheet}' after cleaning.")
+                    continue
+                data[sheet] = df[['Questions', 'Answers']].to_dict('records')
+            except Exception as e:
+                st.error(f"Error processing sheet '{sheet}': {e}")
+                continue
+        if not data:
+            st.error("Error: No valid data loaded from any sheet.")
         return data
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        st.error(f"Error loading kepler_data.xlsx: {e}")
         return {}
 
 # Initialize Gemini model
